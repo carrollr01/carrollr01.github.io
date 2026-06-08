@@ -91,5 +91,21 @@ def export(selected: list[DealRecord], path: str) -> tuple[str, int, int]:
     _write_sheet(ws1, MA_HEADERS, [_ma_row(r) for r in ma])
     ws2 = wb.create_sheet("Capital Raises")
     _write_sheet(ws2, RAISE_HEADERS, [_raise_row(r) for r in raises])
-    wb.save(path)
-    return path, len(ma), len(raises)
+    return _safe_save(wb, path), len(ma), len(raises)
+
+
+def _safe_save(wb, path: str) -> str:
+    """Save to `path`; if it's locked (open in Excel / held by OneDrive), fall back
+    to a timestamped name instead of crashing and losing the whole run."""
+    try:
+        wb.save(path)
+        return path
+    except (PermissionError, OSError) as e:
+        import os
+        from datetime import datetime
+        base, ext = os.path.splitext(path)
+        alt = f"{base}_{datetime.now():%H%M%S}{ext or '.xlsx'}"
+        wb.save(alt)
+        print(f"[exporter] WARNING: '{path}' was locked ({type(e).__name__}: "
+              f"likely open in Excel) — saved to '{alt}' instead.")
+        return alt
