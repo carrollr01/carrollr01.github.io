@@ -59,7 +59,26 @@ python sweep.py --dry-run --deep      # also fire every broaden-tier query
 # Full weekly run -> two-tab Excel:
 python sweep.py
 python sweep.py --out tracker_2026-06-08.xlsx --since-days 7
+
+# Faster: Haiku extraction (Sonnet still verifies) + more workers
+python sweep.py --fast --workers 16
 ```
+
+### Speed
+
+The run is network-bound, so it's heavily parallelized:
+
+- **Feeds** are fetched concurrently (`FEED_CONCURRENCY`).
+- **Article fetching** (enrich) runs in a pool (`ENRICH_CONCURRENCY`).
+- **Extract + verify** are pipelined per candidate and fanned out across workers
+  (`LLM_CONCURRENCY` / `--workers`) — the single biggest lever.
+- **Candidate volume is capped** (`MAX_CANDIDATES_PER_FEED`, `MAX_CANDIDATES`) so
+  a noisy week can't balloon into thousands of LLM calls. Gap-fill still chases
+  empty sectors, so coverage is unaffected.
+- **`--fast`** swaps extraction to Haiku for a big throughput/cost win; the
+  Sonnet verifier still backstops accuracy.
+
+If you hit Anthropic rate limits (HTTP 429), lower `--workers`.
 
 Output defaults to `fintech_deals_<today>.xlsx`. The console prints a summary:
 counts per tab, sectors covered, what was dropped by which rule, and any genuine

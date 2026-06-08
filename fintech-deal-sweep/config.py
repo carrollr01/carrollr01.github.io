@@ -57,6 +57,22 @@ RANK_WEIGHTS = {"value": 0.5, "source": 0.2, "recency": 0.3}
 # independent adversarial second pass. Both are overridable via env.
 EXTRACT_MODEL = os.getenv("SWEEP_EXTRACT_MODEL", "claude-sonnet-4-6")
 VERIFY_MODEL = os.getenv("SWEEP_VERIFY_MODEL", "claude-sonnet-4-6")
+# `--fast` swaps extraction to Haiku (much faster/cheaper); the Sonnet verifier
+# still backstops quality, so accuracy holds up while throughput jumps.
+FAST_EXTRACT_MODEL = os.getenv("SWEEP_FAST_MODEL", "claude-haiku-4-5-20251001")
+
+# ── performance ────────────────────────────────────────────────────────────
+# LLM calls and article fetches are network-bound, so we fan them out. Lower
+# LLM_CONCURRENCY if you hit Anthropic rate limits (HTTP 429).
+LLM_CONCURRENCY = int(os.getenv("SWEEP_LLM_CONCURRENCY", "10"))
+ENRICH_CONCURRENCY = int(os.getenv("SWEEP_ENRICH_CONCURRENCY", "10"))
+FEED_CONCURRENCY = int(os.getenv("SWEEP_FEED_CONCURRENCY", "12"))
+# Bound how many candidates reach the expensive enrich+LLM stages. The feeds are
+# already recency- and gate-filtered; keeping the newest N per feed (and overall)
+# is what stops a 600-candidate week from costing 1,200 LLM calls. Gap-fill still
+# chases any empty sector, so coverage is preserved.
+MAX_CANDIDATES_PER_FEED = int(os.getenv("SWEEP_MAX_PER_FEED", "30"))
+MAX_CANDIDATES = int(os.getenv("SWEEP_MAX_CANDIDATES", "300"))
 
 # ── sector taxonomy (the 8 unique sub-sectors, deduped) ────────────────────
 # key       : machine id used internally

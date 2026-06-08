@@ -127,10 +127,10 @@ def enrich_candidates(cands: list[dict]) -> list[dict]:
         return c
 
     done = 0
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=config.ENRICH_CONCURRENCY) as ex:
         for _ in as_completed([ex.submit(work, c) for c in cands]):
             done += 1
-            if done % 10 == 0 or done == n:
+            if done % 25 == 0 or done == n:
                 print(f"   [enrich] {done}/{n}")
     return cands
 
@@ -144,24 +144,33 @@ def collect_candidates(feeds: list[dict] | None = None,
     `seen_titles` lets callers carry de-dup memory across multiple collection
     rounds (the gap-fill loop), so re-searches never re-surface the same story.
     """
-    feeds = feeds if feeds is not None else config.FEEDS
+    from concurrent.futures import ThreadPoolExecutor
+    feeds = [f for f in (feeds if feeds is not None else config.FEEDS) if f.get("url")]
     lookback_days = lookback_days or config.LOOKBACK_DAYS
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     seen_titles = seen_titles if seen_titles is not None else []
     candidates: list[dict] = []
     per_feed_counts = {}
 
-    for feed in feeds:
-        if not feed.get("url"):
-            continue
+    # Fetch all feeds concurrently (network-bound), then gate/dedup serially so
+    # the title-dedup stays deterministic.
+    def _fetch(feed):
         try:
-            parsed = feedparser.parse(feed["url"])
+            return feed, feedparser.parse(feed["url"])
         except Exception as e:
             print(f"[warn] {feed['name']}: {e}")
-            continue
+            return feed, None
 
+    with ThreadPoolExecutor(max_workers=config.FEED_CONCURRENCY) as ex:
+        fetched = list(ex.map(_fetch, feeds))
+
+    for feed, parsed in fetched:
+        if parsed is None:
+            continue
         kept = 0
         for entry in parsed.entries:
+            if kept >= config.MAX_CANDIDATES_PER_FEED:   # cap volume per feed (newest-first)
+                break
             title = entry.get("title", "")
             pub = None
             if entry.get("published_parsed"):
@@ -196,10 +205,15 @@ def collect_candidates(feeds: list[dict] | None = None,
             kept += 1
         per_feed_counts[feed["name"]] = (len(parsed.entries), kept)
 
+    # Global cap: keep the most recent overall so enrich + LLM stay bounded.
+    if len(candidates) > config.MAX_CANDIDATES:
+        candidates.sort(key=lambda c: c.get("published_at") or "", reverse=True)
+        candidates = candidates[:config.MAX_CANDIDATES]
+
     if not quiet:
         for name, (raw, kept) in per_feed_counts.items():
             print(f"   feed {name}: {raw} entries -> {kept} kept")
-    print(f"[ingest] {len(candidates)} candidates after gate + title-dedup")
+    print(f"[ingest] {len(candidates)} candidates after gate + title-dedup + cap")
     return candidates
 
 

@@ -50,20 +50,41 @@ def _load_dotenv():
 
 
 def _extract_and_verify(cands: list[dict]):
-    """Lazy-imported so --dry-run never needs anthropic installed/keyed."""
+    """Extract + verify every candidate, fanned out across worker threads.
+
+    The two LLM calls per candidate (grounded extract, then adversarial verify)
+    are pipelined per item and run concurrently — this is the single biggest
+    speedup, since the calls are network-bound. Lazy-imported so --dry-run never
+    needs anthropic installed/keyed."""
     import extract
     import verify
-    records = []
-    for i, c in enumerate(cands, 1):
-        try:
-            r = extract.extract_one(c)
-        except Exception as e:
-            print(f"[extract] error on item {i}: {e}")
-            continue
-        if r:
-            records.append(r)
-    print(f"[extract] {len(records)} candidate fintech deals extracted")
-    return verify.verify_all(records)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    n = len(cands)
+    if not n:
+        return []
+    extract.get_client()        # pre-warm the shared client (avoid a thread race)
+    print(f"[llm] extracting + verifying {n} candidates "
+          f"({config.LLM_CONCURRENCY} workers)...")
+
+    def _one(c):
+        r = extract.extract_one(c)
+        return verify.verify_one(r) if r else None
+
+    out, done = [], 0
+    with ThreadPoolExecutor(max_workers=config.LLM_CONCURRENCY) as ex:
+        for fut in as_completed([ex.submit(_one, c) for c in cands]):
+            done += 1
+            try:
+                r = fut.result()
+            except Exception as e:
+                print(f"[llm] error: {e}")
+                r = None
+            if r:
+                out.append(r)
+            if done % 25 == 0 or done == n:
+                print(f"   [llm] {done}/{n} processed, {len(out)} verified deals so far")
+    print(f"[llm] {len(out)} verified fintech deals")
+    return out
 
 
 def cmd_dry_run(args):
@@ -161,7 +182,15 @@ def main():
     p.add_argument("--gapfill-rounds", type=int, default=None,
                    help=f"max gap-fill search rounds (default {config.MAX_GAPFILL_ROUNDS})")
     p.add_argument("--out", default=None, help="output .xlsx path")
+    p.add_argument("--fast", action="store_true",
+                   help="use Haiku for extraction (Sonnet still verifies) — much faster/cheaper")
+    p.add_argument("--workers", type=int, default=None,
+                   help=f"LLM concurrency (default {config.LLM_CONCURRENCY}); lower if rate-limited")
     args = p.parse_args()
+    if args.fast:
+        config.EXTRACT_MODEL = config.FAST_EXTRACT_MODEL
+    if args.workers:
+        config.LLM_CONCURRENCY = args.workers
     (cmd_dry_run if args.dry_run else cmd_run)(args)
 
 
