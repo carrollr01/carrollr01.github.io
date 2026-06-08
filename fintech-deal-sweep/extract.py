@@ -59,16 +59,24 @@ cannot quote a sentence that states a field, that field MUST be null.
 7. When unsure whether something is stated, treat it as NOT stated -> null. \
 Lower your confidence rather than inventing precision.
 
-═══ SCOPE — FINTECH DEALS ONLY ═══
-This tracker covers DEALS in fintech COMPANIES. Set is_fintech=false for anything \
-that is not a fintech-company acquisition or a fintech-company funding round, \
-including:
+═══ SCOPE — FINTECH (TECHNOLOGY-LED) DEALS ONLY ═══
+This tracker covers DEALS in fintech COMPANIES — financial-TECHNOLOGY/software \
+businesses. At least one side of the deal must be a technology-led fintech. Set \
+is_fintech=false for anything that is not a fintech-company acquisition or a \
+fintech-company funding round, including:
+  - a deal where BOTH sides are TRADITIONAL financial institutions with no \
+technology angle (e.g. one community/regional bank buying another, a classic \
+insurer or wealth-advisory roll-up). A 100-year-old community bank, a \
+conventional insurer, or an advisory firm is NOT a fintech target unless the \
+article makes clear it is primarily a technology/software platform.
   - a fund/vehicle close or commitment ("X raises $5bn for a private-credit / PE \
 / venture fund") — that is a fundraise BY an investor, not a company deal
   - an asset manager changing its holdings of a public stock ("X raises position \
 in / acquires shares of [company]") — these are 13F filings, NOT deals
   - secondary share sales, buybacks, token/crypto transfers, ETF/index changes
   - earnings, partnerships, product launches, hires, or regulatory rulings
+If unsure whether the target is technology-led, lower confidence and say so; do \
+not pass off a traditional-bank merger as a fintech deal.
 
 ═══ deal_type ═══
   STRATEGIC_MA  — acquisition/merger where the buyer is an OPERATING company
@@ -113,7 +121,10 @@ Return ONLY a JSON object, no prose:
   target (string|null),
   counterparty (string|null — acquirer for M&A, or lead investor(s) for a raise),
   target_country (string|null — the TARGET company's HQ country),
-  date_announced (string|null — ISO yyyy-mm-dd if a date is given, else null),
+  date_announced (string|null — ISO yyyy-mm-dd of when THIS deal was first \
+ANNOUNCED/agreed/signed. If the article is a later write-up that refers back to \
+an earlier announcement date, use that ORIGINAL announcement date, not today's. \
+Null if no date is given),
   ev (string|null — verbatim enterprise/transaction value; M&A only),
   amount (string|null — verbatim round size; raises only),
   valuation (string|null — verbatim post/pre-money valuation; raises only),

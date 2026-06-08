@@ -48,8 +48,14 @@ def _passes_gate(text: str, pre_scoped: bool) -> bool:
     return _has_fintech_hint(t) and _has_deal_word(t)
 
 
-def _resolve_url(link: str) -> str:
-    """Turn a Google-News redirect into the real publisher URL. Non-google -> as-is."""
+def _resolve_url(link: str, source_href: str | None = None) -> str:
+    """Turn a Google-News redirect into the real publisher URL. Non-google -> as-is.
+
+    A google.com/rss link in the final sheet is unacceptable (it's not a press
+    release and it can't be fetched for full text), so we try hard: the
+    maintained decoder, then the legacy base64 path, then an HTTP redirect, and
+    finally the publisher link the feed itself supplied. Only if ALL fail do we
+    return the original."""
     if "news.google.com" not in link:
         return link
     try:
@@ -69,6 +75,14 @@ def _resolve_url(link: str) -> str:
             return m.group(0).decode("utf-8", "ignore")
     except Exception:
         pass
+    try:                                            # follow the redirect ourselves
+        resp = requests.get(link, headers=UA, timeout=20, allow_redirects=True)
+        if resp.url and "news.google.com" not in resp.url:
+            return resp.url
+    except Exception:
+        pass
+    if source_href and "news.google.com" not in source_href:
+        return source_href                          # the feed's own publisher link
     return link
 
 
@@ -107,7 +121,7 @@ def enrich_candidates(cands: list[dict]) -> list[dict]:
           f"(~1-2 min; this is what lets the model name companies + write descriptions)...")
 
     def work(c):
-        c["source_url"] = _resolve_url(c["source_url"])
+        c["source_url"] = _resolve_url(c["source_url"], c.get("source_href"))
         if len(c["body"]) < 800:
             c["body"] = _fetch_full_text(c["source_url"], c["body"])
         return c
@@ -170,9 +184,11 @@ def collect_candidates(feeds: list[dict] | None = None,
                 continue
             seen_titles.append(nt)
 
+            src = entry.get("source", {}) or {}
             candidates.append({
                 "source_name": feed["name"], "source_tier": feed["tier"],
                 "source_url": entry.get("link", ""), "raw_title": title,
+                "source_href": src.get("href"),        # publisher link the feed supplied
                 "published_at": pub.isoformat() if pub else None,
                 "feed_segment": feed.get("segment"),   # hint only; verifier decides
                 "body": body,                           # snippet now; enrich() adds full text

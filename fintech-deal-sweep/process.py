@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from rapidfuzz import fuzz
 
@@ -28,15 +28,34 @@ def _norm_company(name: str) -> str:
     return re.sub(r"\s+", " ", n).strip()
 
 
+def _same_deal(r: DealRecord, k: DealRecord) -> bool:
+    """Are these two records the same transaction?
+
+    Beyond a plain fuzzy match, treat them as one deal when the SAME acquirer/
+    investor appears and one target name is contained in the other — this catches
+    cases like "T&D Financial Life" vs "T&D Financial Life Insurance" that slip
+    just under the fuzzy threshold."""
+    if r.deal_type != k.deal_type:
+        return False
+    a, b = _norm_company(r.target), _norm_company(k.target)
+    if not a or not b:
+        return False
+    ratio = fuzz.token_sort_ratio(a, b)
+    if ratio >= config.RECORD_SIM_THRESHOLD * 100:
+        return True
+    contained = a in b or b in a
+    cp_a, cp_b = _norm_company(r.counterparty), _norm_company(k.counterparty)
+    same_cp = bool(cp_a) and cp_a == cp_b
+    return contained and (same_cp or ratio >= 70)
+
+
 def dedup_records(records: list[DealRecord]) -> list[DealRecord]:
     """Merge records that are the same deal. Keep the best source + fullest fields."""
     kept: list[DealRecord] = []
     for r in records:
-        rt = _norm_company(r.target)
         match = None
         for k in kept:
-            if r.deal_type == k.deal_type and rt and \
-               fuzz.token_sort_ratio(rt, _norm_company(k.target)) >= config.RECORD_SIM_THRESHOLD * 100:
+            if _same_deal(r, k):
                 match = k
                 break
         if not match:
@@ -53,6 +72,47 @@ def dedup_records(records: list[DealRecord]) -> list[DealRecord]:
         if primary is not match:
             kept[kept.index(match)] = primary
     return kept
+
+
+def _as_date(s: str | None):
+    """Parse a yyyy-mm-dd (or ISO) string to a date, else None."""
+    if not s:
+        return None
+    s = str(s)[:10]
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def enforce_window(records: list[DealRecord], lookback_days: int | None = None
+                   ) -> tuple[list[DealRecord], int]:
+    """Keep only deals ANNOUNCED inside the window, and backfill the display date.
+
+    Two jobs, both of which were broken before:
+      1. Fill `date_announced` from the article's publish date when the body
+         didn't state one (the verifier nulls body-unsupported dates, which is
+         why almost every Date cell was blank). The publish date IS a valid
+         announcement-date proxy for a fresh story.
+      2. Drop stale items: if a STATED announcement date is older than the
+         window, the story is a re-report of an old deal (e.g. a deal first
+         announced months ago) — exclude it. This is what lets through
+         only genuinely new announcements.
+    """
+    lookback_days = lookback_days or config.LOOKBACK_DAYS
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).date()
+    kept, dropped = [], 0
+    for r in records:
+        stated = _as_date(r.date_announced)
+        published = _as_date(r.published_at)
+        effective = stated or published
+        if effective is not None and effective < cutoff:
+            dropped += 1                      # announced before the window -> stale
+            continue
+        if not r.date_announced and r.published_at:
+            r.date_announced = r.published_at[:10]   # backfill the blank Date cell
+        kept.append(r)
+    return kept, dropped
 
 
 def filter_eligible(records: list[DealRecord]) -> tuple[list[DealRecord], dict]:

@@ -50,6 +50,10 @@ REJECT the whole record (verdict="reject") if ANY of these is true:
 round. Reject fund/vehicle closes ("raised $Xbn for a fund"), 13F/position \
 changes, secondary share sales, buybacks, partnerships, product launches, \
 hires, earnings, regulatory news, token/crypto items.
+  - Neither side is a technology-led fintech — e.g. one traditional community/\
+regional bank acquiring another, or a conventional insurer / wealth-advisory \
+roll-up with no software/platform angle. The target (or acquirer) must be a \
+financial-TECHNOLOGY business, not just a financial institution.
   - deal_type is STRATEGIC_MA or PE_BUYOUT but the text describes the COMPLETION \
 of a previously-announced deal (i.e. deal_status should be "completed"). We only \
 keep fresh ANNOUNCEMENTS, so reject completed M&A.
@@ -62,7 +66,11 @@ from a prior round/revenue/multiple, set it to null. Verify the number and units
 match the text character-for-character (allow trivial formatting like "$110m" vs \
 "$110 million" only if both denote the same stated figure).
   - ev_revenue / ev_ebitda: keep ONLY if the multiple is explicitly printed.
-  - counterparty, target_country, date_announced: keep ONLY if stated; else null.
+  - counterparty, target_country: keep ONLY if stated; else null.
+  - date_announced: keep the deal's announcement date if the article states or \
+datelines one (a publication dateline counts). Only null it if there is no \
+date associated with the announcement at all. Do NOT null a plausibly-correct \
+announcement date just because the exact phrasing differs.
   - target_description: must be supported by the article and must NOT assert \
 capabilities/customers/metrics not in the text; otherwise null it.
   - segment: confirm the best-fit key from this list, else null:

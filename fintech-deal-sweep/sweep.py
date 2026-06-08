@@ -90,7 +90,10 @@ def cmd_run(args):
     cands = ingest.enrich_candidates(cands)
     all_records = _extract_and_verify(cands)
     all_records = process.dedup_records(all_records)
+    all_records, n_stale = process.enforce_window(all_records, args.since_days)
     eligible, drops = process.filter_eligible(all_records)
+    if n_stale:
+        drops["stale_out_of_window"] = n_stale
     eligible = process.score(eligible)
     selected, gaps = process.select(eligible)
 
@@ -108,7 +111,10 @@ def cmd_run(args):
             more = ingest.enrich_candidates(more)
             new_records = _extract_and_verify(more)
             all_records = process.dedup_records(all_records + new_records)
+            all_records, n_stale = process.enforce_window(all_records, args.since_days)
             eligible, drops = process.filter_eligible(all_records)
+            if n_stale:
+                drops["stale_out_of_window"] = n_stale
             eligible = process.score(eligible)
             selected, gaps = process.select(eligible)
         rd += 1
