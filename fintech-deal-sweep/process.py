@@ -168,13 +168,14 @@ def score(records: list[DealRecord]) -> list[DealRecord]:
 
 
 def select(records: list[DealRecord]) -> tuple[list[DealRecord], list[str]]:
-    """Pick deals across sectors WITHOUT inventing any.
+    """Pick deals across sectors WITHOUT inventing any and WITHOUT an upper bound
+    per sector — every significant, eligible deal makes the cut.
 
     Guarantees:
       - at least PER_SEGMENT_MIN per sector that actually has a real deal,
-      - at most PER_SEGMENT_MAX per sector,
-      - no more than TARGET_TOTAL_MAX overall,
-      - filling toward TARGET_TOTAL_MIN by significance.
+      - NO per-sector ceiling (PER_SEGMENT_MAX = 0 means unlimited),
+      - TARGET_TOTAL_MAX is only a high safety ceiling,
+      - ordering by significance (so the biggest deals sit at the top).
 
     Returns (selected, gap_segment_keys) where gaps are sectors with ZERO
     eligible deals. The caller uses gaps to drive more searches (it must not
@@ -187,21 +188,22 @@ def select(records: list[DealRecord]) -> tuple[list[DealRecord], list[str]]:
     for items in by_seg.values():
         items.sort(key=lambda x: x.significance, reverse=True)
 
+    per_seg_cap = config.PER_SEGMENT_MAX if config.PER_SEGMENT_MAX > 0 else float("inf")
     selected: list[DealRecord] = []
     # Pass 1: guarantee one per sector that has anything.
     for seg, items in by_seg.items():
         if items:
             selected.append(items[0])
 
-    # Pass 2: fill remaining capacity by significance, respecting the per-sector
-    # cap and the overall ceiling.
+    # Pass 2: add every remaining eligible deal by significance — no per-sector
+    # cap by default — up to the overall safety ceiling.
     pool = sorted((r for items in by_seg.values() for r in items[1:]),
                   key=lambda x: x.significance, reverse=True)
     seg_counts = Counter(r.segment for r in selected)
     for r in pool:
         if len(selected) >= config.TARGET_TOTAL_MAX:
             break
-        if seg_counts[r.segment] >= config.PER_SEGMENT_MAX:
+        if seg_counts[r.segment] >= per_seg_cap:
             continue
         selected.append(r)
         seg_counts[r.segment] += 1

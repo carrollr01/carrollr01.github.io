@@ -29,10 +29,13 @@ SEARCH_LOOKBACK_DAYS = int(os.getenv("SWEEP_SEARCH_DAYS", "14"))
 GROWTH_RAISE_MIN_USD = float(os.getenv("SWEEP_RAISE_MIN_USD", "25000000"))
 
 # ── selection targets ──────────────────────────────────────────────────────
-TARGET_TOTAL_MIN = 15          # we aim for at least this many across all sectors
-TARGET_TOTAL_MAX = 20          # …and never export more than this
+# We want EVERY significant, verified, in-window deal — there is no upper bound
+# per sector. PER_SEGMENT_MAX = 0 means unlimited; TARGET_TOTAL_MAX is just a
+# high safety ceiling so a pathological week can't write thousands of rows.
+TARGET_TOTAL_MIN = 15          # soft floor we aim for across all sectors
+TARGET_TOTAL_MAX = int(os.getenv("SWEEP_TOTAL_MAX", "75"))   # safety ceiling only
 PER_SEGMENT_MIN = 1            # guarantee >=1 per sector *if a real one exists*
-PER_SEGMENT_MAX = 3            # cap any single sector so it can't crowd the rest
+PER_SEGMENT_MAX = int(os.getenv("SWEEP_PER_SEGMENT_MAX", "0"))   # 0 = unlimited
 
 # How hard the picker tries before admitting a sector is genuinely empty. Each
 # round fires additional, progressively broader searches for the still-empty

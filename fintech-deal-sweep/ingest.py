@@ -27,6 +27,15 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").lower()).strip()
 
 
+_MONEY_RE = re.compile(r"[\$€£]\s*\d[\d,.]*\s*(?:k|m|mn|mm|bn|b|tn|million|billion|trillion)?"
+                       r"|\b\d[\d,.]*\s*(?:million|billion|trillion)\b", re.I)
+
+
+def _has_money(c: dict) -> bool:
+    """True if the headline/snippet advertises a concrete money figure."""
+    return bool(_MONEY_RE.search(f"{c.get('raw_title','')} {c.get('body','')[:300]}"))
+
+
 def _has_deal_word(t: str) -> bool:
     return any(k in t for k in config.MA_KEYWORDS) or any(k in t for k in config.RAISE_KEYWORDS)
 
@@ -205,10 +214,16 @@ def collect_candidates(feeds: list[dict] | None = None,
             kept += 1
         per_feed_counts[feed["name"]] = (len(parsed.entries), kept)
 
-    # Global cap: keep the most recent overall so enrich + LLM stay bounded.
+    # Global cap: keep enrich + LLM bounded, but NEVER drop a candidate that
+    # advertises a real money figure (e.g. "$350m", "$7.5bn", "$2.5 billion") —
+    # those are the significant deals we must not miss. Big-money items are kept
+    # in full; the recency cap only trims the unpriced long tail.
     if len(candidates) > config.MAX_CANDIDATES:
-        candidates.sort(key=lambda c: c.get("published_at") or "", reverse=True)
-        candidates = candidates[:config.MAX_CANDIDATES]
+        priced = [c for c in candidates if _has_money(c)]
+        rest = [c for c in candidates if not _has_money(c)]
+        rest.sort(key=lambda c: c.get("published_at") or "", reverse=True)
+        keep_rest = max(0, config.MAX_CANDIDATES - len(priced))
+        candidates = priced + rest[:keep_rest]
 
     if not quiet:
         for name, (raw, kept) in per_feed_counts.items():
