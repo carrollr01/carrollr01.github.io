@@ -115,6 +115,12 @@ def enforce_window(records: list[DealRecord], lookback_days: int | None = None
     return kept, dropped
 
 
+# Event stages that are NOT a fresh announcement — a deal at one of these stages
+# was disclosed earlier, so we drop it (we ingest on announce). "announced" and
+# "unknown" are kept; everything on this list is rejected.
+NON_ANNOUNCEMENT_STATUSES = {"completed", "regulatory", "rumor"}
+
+
 def filter_eligible(records: list[DealRecord]) -> tuple[list[DealRecord], dict]:
     """Apply the hard business rules. Returns (eligible, drop_counts)."""
     out, drops = [], Counter()
@@ -122,10 +128,11 @@ def filter_eligible(records: list[DealRecord]) -> tuple[list[DealRecord], dict]:
         if not r.verified:
             drops["unverified"] += 1
             continue
+        status = (r.deal_status or "unknown").lower()
+        if status in NON_ANNOUNCEMENT_STATUSES:
+            drops[f"stage_{status}"] += 1      # closing / regulatory step / rumor, not an announce
+            continue
         if r.deal_type in MA_TYPES:
-            if r.deal_status == "completed":
-                drops["completed_ma"] += 1     # announced earlier — already ingested
-                continue
             out.append(r)
         elif r.deal_type == CAPITAL_RAISE:
             amt = r.amount_usd

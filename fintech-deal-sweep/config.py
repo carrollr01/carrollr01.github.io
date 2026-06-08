@@ -218,6 +218,13 @@ EXCLUDE_KEYWORDS = [
     "analyst", "13f", "raises stake in shares", "raises position", "etf",
     "index fund", "airdrop", "token sale", "lawsuit", "fined", "regulator",
     "how to", "opinion", "podcast",
+    # regulatory / antitrust PROCESS steps on already-announced deals (the deal
+    # was disclosed earlier — this is review/clearance/block news, not an announce)
+    "antitrust", "merger review", "merger filing", "competition authority",
+    "competition watchdog", "european commission", "in-depth investigation",
+    "phase ii", "phase 2 review", "opens probe", "regulatory probe", "tribunal",
+    "sues to block", "moves to block", "to block the", "wins antitrust",
+    "conditional approval", "clears antitrust",
 ]
 
 

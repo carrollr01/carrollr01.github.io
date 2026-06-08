@@ -84,17 +84,29 @@ not pass off a traditional-bank merger as a fintech deal.
   CAPITAL_RAISE — a PRIMARY funding round (seed / Series / growth equity)
 If the article is none of these, set is_fintech=false and deal_type=UNKNOWN.
 
-═══ deal_status (critical: we only want ANNOUNCEMENTS) ═══
-  announced  — the article reports this deal being NEWLY disclosed, agreed, \
-signed, or launched. For a funding round, a newly disclosed/closed round is \
+═══ deal_status (critical: we ONLY want fresh ANNOUNCEMENTS) ═══
+Classify what STAGE this article reports. One of:
+  announced  — the deal is being NEWLY disclosed, agreed, signed, or launched \
+for the first time. For a funding round, a newly disclosed/closed round is \
 "announced" (the close IS the announcement).
-  completed  — the article reports the CLOSING / COMPLETION / consummation of an \
-M&A deal that was ANNOUNCED EARLIER (e.g. "has completed its previously \
-announced acquisition of…", "the transaction has closed following regulatory \
-approval").
+  completed  — the CLOSING / COMPLETION / consummation of an M&A deal that was \
+ANNOUNCED EARLIER ("has completed its previously announced acquisition…").
+  regulatory — a REGULATORY / ANTITRUST PROCESS step on a deal that was \
+announced earlier: a merger filing or notification, a referral to a competition \
+tribunal/commission, the opening of a review or in-depth (Phase II) \
+investigation, a clearance/approval/conditional approval, or a prohibition / \
+block / challenge. Examples: "CADE submitted the case to the Tribunal", "EU \
+opens in-depth probe into X's acquisition", "FTC sues to block", "regulator \
+clears the deal". These are NOT the announcement — the deal was announced before.
+  rumor      — talks/speculation/"in advanced discussions"/"is exploring" with \
+no signed/agreed deal yet.
   unknown    — cannot tell.
-Set "completed" ONLY for M&A finalizations of a previously-announced deal. A \
-first-time funding announcement is ALWAYS "announced".
+Set "announced" ONLY for the first-time disclosure of an agreed deal or a closed \
+funding round. If the news is a closing, a regulatory/antitrust step, or mere \
+talks, use the matching status above — do NOT call it "announced". Note: a \
+genuine announcement that merely MENTIONS it is "subject to regulatory approval" \
+is still "announced"; status is "regulatory" only when the regulatory step \
+ITSELF is the news.
 
 ═══ target_description (house voice) ═══
 Write ONE descriptor of what the TARGET does, in this EXACT voice:
@@ -117,7 +129,7 @@ adjective; no marketing fluff.
 Return ONLY a JSON object, no prose:
   is_fintech (bool),
   deal_type (string),
-  deal_status (string: announced | completed | unknown),
+  deal_status (string: announced | completed | regulatory | rumor | unknown),
   target (string|null),
   counterparty (string|null — acquirer for M&A, or lead investor(s) for a raise),
   target_country (string|null — the TARGET company's HQ country),

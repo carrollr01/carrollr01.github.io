@@ -54,9 +54,18 @@ hires, earnings, regulatory news, token/crypto items.
 regional bank acquiring another, or a conventional insurer / wealth-advisory \
 roll-up with no software/platform angle. The target (or acquirer) must be a \
 financial-TECHNOLOGY business, not just a financial institution.
-  - deal_type is STRATEGIC_MA or PE_BUYOUT but the text describes the COMPLETION \
-of a previously-announced deal (i.e. deal_status should be "completed"). We only \
-keep fresh ANNOUNCEMENTS, so reject completed M&A.
+  - The article is NOT the fresh announcement of the deal, but a later-stage \
+event on a deal announced earlier. We keep ONLY first-time announcements, so \
+REJECT when the news is any of:
+      * a COMPLETION/closing of a previously-announced deal, or
+      * a REGULATORY/ANTITRUST process step — a merger filing/notification, a \
+referral to a competition tribunal/commission (e.g. CADE, the EU, FTC/DOJ), the \
+opening of a review or in-depth/Phase II investigation, a clearance/approval, or \
+a prohibition/block/challenge, or
+      * a RUMOR — talks, speculation, "exploring", "in advanced discussions" \
+with no signed/agreed deal.
+    (A real announcement that merely says it is "subject to regulatory approval" \
+is fine — reject only when the regulatory/closing/rumor step ITSELF is the news.)
   - The target named in the record is actually the acquirer/investor.
 
 Field-level grounding rules:
