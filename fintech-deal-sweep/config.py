@@ -10,9 +10,18 @@ import os
 from urllib.parse import quote_plus
 
 # ── window ────────────────────────────────────────────────────────────────
-# Only deals ANNOUNCED in this trailing window are eligible. Closings /
-# completions of previously-announced deals are dropped (see verify.py).
+# Only deals ANNOUNCED in this trailing window make the brief. This is the HARD
+# gate (a weekly brief = 7 days) and is enforced on the announcement date, never
+# loosened. Closings / completions of previously-announced deals are dropped.
 LOOKBACK_DAYS = int(os.getenv("SWEEP_LOOKBACK_DAYS", "7"))
+
+# The candidate SEARCH net is deliberately WIDER than the brief window. Google
+# indexes/timestamps stories a day or two after the wire, so searching only 7
+# days silently misses deals announced late in the window. We pull ~14 days of
+# candidates, then the strict LOOKBACK_DAYS filter (enforce_window) keeps only
+# those actually ANNOUNCED within the brief. Wider net, same hard gate — this is
+# how the sweep "tries harder" without ever bending the 7-day rule.
+SEARCH_LOOKBACK_DAYS = int(os.getenv("SWEEP_SEARCH_DAYS", "14"))
 
 # ── growth-raise floor ─────────────────────────────────────────────────────
 # Capital raises must have a DISCLOSED amount strictly above this to qualify.
@@ -25,9 +34,13 @@ TARGET_TOTAL_MAX = 20          # …and never export more than this
 PER_SEGMENT_MIN = 1            # guarantee >=1 per sector *if a real one exists*
 PER_SEGMENT_MAX = 3            # cap any single sector so it can't crowd the rest
 
-# How hard the picker tries before admitting a sector is genuinely empty.
-# Each round fires additional, broader searches for the still-empty sectors.
-MAX_GAPFILL_ROUNDS = int(os.getenv("SWEEP_GAPFILL_ROUNDS", "3"))
+# How hard the picker tries before admitting a sector is genuinely empty. Each
+# round fires additional, progressively broader searches for the still-empty
+# sectors (see each sector's "broaden" tiers). More rounds = more recall + more
+# LLM spend, but only for sectors that are actually still empty. A truly quiet
+# sector still ends as a genuine gap — the rounds widen the search, they never
+# lower the bar for what counts as a real, verified, in-window deal.
+MAX_GAPFILL_ROUNDS = int(os.getenv("SWEEP_GAPFILL_ROUNDS", "4"))
 
 # ── dedup / similarity ─────────────────────────────────────────────────────
 TITLE_SIM_THRESHOLD = 0.86     # near-duplicate headline merge (pre-LLM)
@@ -64,6 +77,7 @@ SEGMENTS: dict[str, dict] = {
             '("buy now pay later" OR "consumer lending" OR "credit platform" OR "loan origination")',
             '("embedded finance" OR "banking-as-a-service" OR "small business lending" OR "deposit platform")',
             '("commercial lending" OR "credit union technology" OR "mortgage lender" OR fintech bank)',
+            '(lendtech OR "loan management" OR "credit scoring" OR "alternative lending" OR neolender)',
         ],
     },
     "corporate_finance": {
@@ -77,6 +91,7 @@ SEGMENTS: dict[str, dict] = {
             '("corporate card" OR "b2b payments" OR invoicing OR billing OR "accounts receivable")',
             '(accounting software OR "financial close" OR "fp&a" OR "ERP finance")',
             '("CFO platform" OR "treasury management" OR "spend platform" OR "procure-to-pay")',
+            '("expense automation" OR "vendor payments" OR "financial operations" OR "bill pay" software)',
         ],
     },
     "financial_info": {
@@ -89,6 +104,7 @@ SEGMENTS: dict[str, dict] = {
             '("alternative data" OR "investment research" OR "ratings agency" OR "index provider")',
             '("ESG data" OR "credit data" OR "pricing data" OR "reference data")',
             '("financial intelligence" OR "data analytics" OR "research platform" fintech)',
+            '("benchmarking data" OR "private market data" OR "regulatory data" OR "data infrastructure" finance)',
         ],
     },
     "insurtech": {
@@ -100,6 +116,7 @@ SEGMENTS: dict[str, dict] = {
             '("insurance platform" OR "digital insurer" OR "claims automation" OR "embedded insurance")',
             '("commercial insurance" OR "life insurance technology" OR "p&c insurance" OR mga)',
             '("insurance broker" OR "policy administration" OR "underwriting platform")',
+            '("health insurance technology" OR "insurance distribution" OR "parametric insurance" OR "claims platform")',
         ],
     },
     "payments": {
@@ -112,6 +129,7 @@ SEGMENTS: dict[str, dict] = {
             '("payment processor" OR "merchant acquiring" OR "point of sale" OR "digital wallet")',
             '("cross-border payments" OR "payment gateway" OR "real-time payments" OR "card issuing")',
             '("payment orchestration" OR "stablecoin payments" OR "payment infrastructure")',
+            '(acquiring OR payouts OR "A2A payments" OR "bill payments" OR "payment API")',
         ],
     },
     "capital_markets": {
@@ -124,6 +142,7 @@ SEGMENTS: dict[str, dict] = {
             '("order management system" OR "execution platform" OR "trading technology" OR "market infrastructure")',
             '("securities settlement" OR "clearing house" OR "exchange technology" OR "fixed income trading")',
             '("prime brokerage" OR "private markets technology" OR "tokenized securities")',
+            '("trade surveillance" OR "post-trade technology" OR "FIX connectivity" OR "liquidity platform")',
         ],
     },
     "real_estate_mortgage": {
@@ -135,6 +154,7 @@ SEGMENTS: dict[str, dict] = {
             '("mortgage technology" OR "home loan platform" OR "real estate finance" OR "home equity")',
             '("property management software" OR "title insurance" OR "closing platform")',
             '("real estate marketplace" OR "construction finance" OR "rent technology")',
+            '("loan origination system" OR "appraisal technology" OR "home equity platform" OR "escrow technology")',
         ],
     },
     "asset_wealth": {
@@ -147,6 +167,7 @@ SEGMENTS: dict[str, dict] = {
             '("digital wealth" OR "RIA technology" OR "portfolio management" OR "retirement platform")',
             '("investment platform" OR "private wealth" OR "alternative investments platform")',
             '("brokerage app" OR "advisor technology" OR "asset management technology")',
+            '("model portfolios" OR "custody technology" OR TAMP OR "direct indexing" OR "wealthtech platform")',
         ],
     },
 }
@@ -182,8 +203,9 @@ EXCLUDE_KEYWORDS = [
 
 
 def gnews_feed_url(query: str) -> str:
-    """Build a Google-News RSS search URL for a query (recency-biased)."""
-    q = f"{query} when:{LOOKBACK_DAYS}d"
+    """Build a Google-News RSS search URL. Uses the WIDE search net; the strict
+    7-day announcement gate is applied later by process.enforce_window()."""
+    q = f"{query} when:{SEARCH_LOOKBACK_DAYS}d"
     return ("https://news.google.com/rss/search?q="
             f"{quote_plus(q)}&hl=en-US&gl=US&ceid=US:en")
 

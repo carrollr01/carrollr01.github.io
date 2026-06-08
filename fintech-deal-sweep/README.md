@@ -31,7 +31,12 @@ Three independent layers:
 
 The picker also **doesn't cop out after one pass**: any still-empty sector
 triggers additional, progressively broader search rounds (`--gapfill-rounds`,
-default 3) before it's ever called a gap.
+default 4) before it's ever called a gap. It also **searches a wider net than the
+brief** — candidates are pulled from ~14 days (`--search-days`) so a deal
+announced late in the week but indexed a day or two later still surfaces — while
+the **strict 7-day announcement gate** (`--since-days`) decides what actually
+makes the brief. Wider search, same hard rule: it tries harder without ever
+loosening the window or inventing a deal to fill a sector.
 
 ---
 

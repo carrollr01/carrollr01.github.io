@@ -72,7 +72,7 @@ def cmd_dry_run(args):
         for k in config.SEGMENTS:
             for rd in range(config.MAX_GAPFILL_ROUNDS):
                 feeds.extend(config.segment_feeds(k, round_idx=rd))
-    cands = ingest.collect_candidates(feeds=feeds, lookback_days=args.since_days)
+    cands = ingest.collect_candidates(feeds=feeds, lookback_days=args.search_days)
     print("\n--- DRY RUN: candidates (no LLM calls, no cost) ---")
     for i, c in enumerate(cands, 1):
         seg = c.get("feed_segment") or "general"
@@ -84,9 +84,10 @@ def cmd_dry_run(args):
 def cmd_run(args):
     seen_titles: list[str] = []
 
-    # Round 0 — primary feeds across every sector.
+    # Round 0 — primary feeds across every sector. Collect on the WIDE search net;
+    # the strict announcement window is applied by enforce_window() below.
     cands = ingest.collect_candidates(feeds=config.FEEDS, seen_titles=seen_titles,
-                                      lookback_days=args.since_days)
+                                      lookback_days=args.search_days)
     cands = ingest.enrich_candidates(cands)
     all_records = _extract_and_verify(cands)
     all_records = process.dedup_records(all_records)
@@ -106,7 +107,7 @@ def cmd_run(args):
         print(f"\n[gapfill] round {rd + 1}/{rounds} — chasing empty sectors: {labels}")
         feeds = [f for g in gaps for f in config.segment_feeds(g, round_idx=rd)]
         more = ingest.collect_candidates(feeds=feeds, seen_titles=seen_titles,
-                                         lookback_days=args.since_days, quiet=True)
+                                         lookback_days=args.search_days, quiet=True)
         if more:
             more = ingest.enrich_candidates(more)
             new_records = _extract_and_verify(more)
@@ -152,7 +153,11 @@ def main():
     p.add_argument("--deep", action="store_true",
                    help="(with --dry-run) also fire every broaden-tier query")
     p.add_argument("--since-days", type=int, default=config.LOOKBACK_DAYS,
-                   help=f"announcement window in days (default {config.LOOKBACK_DAYS})")
+                   help=f"STRICT announcement window in days — the brief (default "
+                        f"{config.LOOKBACK_DAYS}); deals announced before this are dropped")
+    p.add_argument("--search-days", type=int, default=config.SEARCH_LOOKBACK_DAYS,
+                   help=f"wider candidate-search net in days (default "
+                        f"{config.SEARCH_LOOKBACK_DAYS}); recall only, never relaxes --since-days")
     p.add_argument("--gapfill-rounds", type=int, default=None,
                    help=f"max gap-fill search rounds (default {config.MAX_GAPFILL_ROUNDS})")
     p.add_argument("--out", default=None, help="output .xlsx path")
