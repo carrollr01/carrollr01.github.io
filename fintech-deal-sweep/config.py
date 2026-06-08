@@ -7,6 +7,7 @@ Anthropic key is read from the environment (ANTHROPIC_API_KEY).
 """
 from __future__ import annotations
 import os
+import re
 from urllib.parse import quote_plus
 
 # ── window ────────────────────────────────────────────────────────────────
@@ -226,6 +227,51 @@ EXCLUDE_KEYWORDS = [
     "sues to block", "moves to block", "to block the", "wins antitrust",
     "conditional approval", "clears antitrust",
 ]
+
+
+# ── geography focus ────────────────────────────────────────────────────────
+# Houlihan Lokey fintech-coverage markets. A deal is dropped when its TARGET
+# country is known and NOT in this set (so emerging/smaller markets without HL
+# presence — India, South Africa, Brazil, etc. — are filtered out). A blank/
+# unknown country is KEPT by default (we never fabricate an exclusion); flip
+# SWEEP_GEO_DROP_UNKNOWN=1 to drop those too. Edit the set freely.
+GEO_FILTER_ENABLED = os.getenv("SWEEP_GEO_FILTER", "1") not in ("0", "false", "no")
+GEO_DROP_UNKNOWN = os.getenv("SWEEP_GEO_DROP_UNKNOWN", "0") in ("1", "true", "yes")
+
+INCLUDED_COUNTRIES = {
+    "united states", "canada", "united kingdom", "ireland", "france", "germany",
+    "netherlands", "belgium", "luxembourg", "switzerland", "austria", "spain",
+    "portugal", "italy", "sweden", "norway", "denmark", "finland", "iceland",
+    "australia", "new zealand", "japan", "singapore", "hong kong",
+}
+
+# Common spellings/abbreviations -> canonical form used in INCLUDED_COUNTRIES.
+_COUNTRY_ALIASES = {
+    "us": "united states", "usa": "united states", "u s": "united states",
+    "u s a": "united states", "america": "united states", "united states of america": "united states",
+    "uk": "united kingdom", "u k": "united kingdom", "britain": "united kingdom",
+    "great britain": "united kingdom", "england": "united kingdom",
+    "scotland": "united kingdom", "wales": "united kingdom",
+    "holland": "netherlands", "the netherlands": "netherlands",
+    "nz": "new zealand", "hong kong sar": "hong kong", "hongkong": "hong kong",
+}
+
+
+def normalize_country(s: str | None) -> str | None:
+    """Lowercase/strip a country string to a canonical form, or None if blank."""
+    if not s:
+        return None
+    n = re.sub(r"[^\w\s]", " ", s.lower())
+    n = re.sub(r"\s+", " ", n).strip()
+    return _COUNTRY_ALIASES.get(n, n) or None
+
+
+def in_focus_market(country: str | None) -> bool | None:
+    """True if in an HL focus market, False if explicitly outside, None if unknown."""
+    c = normalize_country(country)
+    if c is None:
+        return None
+    return c in INCLUDED_COUNTRIES
 
 
 def gnews_feed_url(query: str) -> str:

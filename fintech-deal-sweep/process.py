@@ -132,6 +132,11 @@ def filter_eligible(records: list[DealRecord]) -> tuple[list[DealRecord], dict]:
         if status in NON_ANNOUNCEMENT_STATUSES:
             drops[f"stage_{status}"] += 1      # closing / regulatory step / rumor, not an announce
             continue
+        if config.GEO_FILTER_ENABLED:          # restrict to HL fintech-coverage markets
+            focus = config.in_focus_market(r.target_country)
+            if focus is False or (focus is None and config.GEO_DROP_UNKNOWN):
+                drops["outside_focus_market"] += 1
+                continue
         if r.deal_type in MA_TYPES:
             out.append(r)
         elif r.deal_type == CAPITAL_RAISE:
